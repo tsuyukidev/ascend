@@ -62,20 +62,29 @@ mod.features = {
 		name = "Infinite Jump",
 		type = "toggle",
 		section = "Movement",
+		default = false,
 		run = function(state)
-			if state then
-				runtime.jump = track(UserInputService.JumpRequest:Connect(function()
-					local hum = humanoid()
-					if hum then
-						hum:ChangeState(Enum.HumanoidStateType.Jumping)
-					end
-				end))
-			elseif runtime.jump then
+			if runtime.jump then
 				pcall(function()
 					runtime.jump:Disconnect()
 				end)
 				runtime.jump = nil
 			end
+			if not state then
+				return
+			end
+			runtime.jump = track(UserInputService.JumpRequest:Connect(function()
+				local hum = humanoid()
+				local character = plr.Character
+				local hrp = character and character:FindFirstChild("HumanoidRootPart")
+				if not hum or not hrp then
+					return
+				end
+				hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+				local power = math.max(hum.JumpPower or 50, 50)
+				local v = hrp.AssemblyLinearVelocity
+				hrp.AssemblyLinearVelocity = Vector3.new(v.X, power, v.Z)
+			end))
 		end,
 	},
 	{

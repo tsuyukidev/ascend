@@ -1,4 +1,4 @@
--- ascend hub v0.3.0 | built 2026-11-14T17:24:02Z | do not edit, edit src/
+-- ascend hub v0.3.0 | built 2026-11-14T17:27:45Z | do not edit, edit src/
 local __mods = {}
 local __loaded = {}
 local function __req(name)
@@ -2483,6 +2483,98 @@ local function blockReports()
 	return true
 end
 
+local traj = { parts = {}, folder = nil, conn = nil }
+local TRAJ_POINTS = 34
+
+local function trajFolder()
+	if traj.folder and traj.folder.Parent then
+		return traj.folder
+	end
+	local f = Instance.new("Folder")
+	f.Name = "AscendTrajectory"
+	f.Parent = workspace
+	traj.folder = f
+	return f
+end
+
+local function trajPart(i)
+	local p = traj.parts[i]
+	if p and p.Parent then
+		return p
+	end
+	p = Instance.new("Part")
+	p.Name = "Trajectory"
+	p.Shape = Enum.PartType.Ball
+	p.Size = Vector3.new(0.32, 0.32, 0.32)
+	p.Material = Enum.Material.Neon
+	p.Color = Color3.fromRGB(126, 108, 255)
+	p.Transparency = 1
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Parent = trajFolder()
+	traj.parts[i] = p
+	return p
+end
+
+local function hideTraj(from)
+	for i = from or 1, TRAJ_POINTS do
+		local p = traj.parts[i]
+		if p then
+			p.Transparency = 1
+		end
+	end
+end
+
+local function updateTraj()
+	local b = ball()
+	local target = aimPoint()
+	local c = char()
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	local shown = 0
+	if b and target and hrp and (b.Position - hrp.Position).Magnitude < 80 then
+		local flat = (target - b.Position) * Vector3.new(1, 0, 1)
+		if flat.Magnitude > 1 then
+			local speed = rt.speed or 110
+			local lift = rt.lift or 18
+			local v = flat.Unit * speed + Vector3.new(0, lift, 0)
+			local g = Vector3.new(0, -workspace.Gravity, 0)
+			local origin = b.Position
+			local dt = 0.055
+			local floor = origin.Y - 14
+			for i = 1, TRAJ_POINTS do
+				local t = i * dt
+				local p = origin + v * t + 0.5 * g * t * t
+				if p.Y < floor then
+					break
+				end
+				local part = trajPart(i)
+				part.Position = p
+				part.Transparency = 0.15 + (i / TRAJ_POINTS) * 0.65
+				shown = i
+			end
+		end
+	end
+	hideTraj(shown + 1)
+end
+
+local function setTraj(state)
+	if traj.conn then
+		traj.conn:Disconnect()
+		traj.conn = nil
+	end
+	if not state then
+		hideTraj(1)
+		return
+	end
+	traj.conn = RunService.Heartbeat:Connect(updateTraj)
+	updateTraj()
+end
+
 local function shoot(speed, lift)
 	local b = ball()
 	local c = char()
@@ -2612,6 +2704,15 @@ mod.features = {
 		default = 18,
 		run = function(value)
 			rt.lift = value
+		end,
+	},
+	{
+		name = "Trajectory",
+		type = "toggle",
+		section = "Shot",
+		default = false,
+		run = function(state)
+			setTraj(state)
 		end,
 	},
 	{
@@ -2873,20 +2974,29 @@ mod.features = {
 		name = "Infinite Jump",
 		type = "toggle",
 		section = "Movement",
+		default = false,
 		run = function(state)
-			if state then
-				runtime.jump = track(UserInputService.JumpRequest:Connect(function()
-					local hum = humanoid()
-					if hum then
-						hum:ChangeState(Enum.HumanoidStateType.Jumping)
-					end
-				end))
-			elseif runtime.jump then
+			if runtime.jump then
 				pcall(function()
 					runtime.jump:Disconnect()
 				end)
 				runtime.jump = nil
 			end
+			if not state then
+				return
+			end
+			runtime.jump = track(UserInputService.JumpRequest:Connect(function()
+				local hum = humanoid()
+				local character = plr.Character
+				local hrp = character and character:FindFirstChild("HumanoidRootPart")
+				if not hum or not hrp then
+					return
+				end
+				hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+				local power = math.max(hum.JumpPower or 50, 50)
+				local v = hrp.AssemblyLinearVelocity
+				hrp.AssemblyLinearVelocity = Vector3.new(v.X, power, v.Z)
+			end))
 		end,
 	},
 	{
