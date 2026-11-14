@@ -37,7 +37,7 @@ python3 build.py     # build only
 Host `dist/hub.lua` somewhere raw (github raw, cdn), then in an executor:
 
 ```lua
-loadstring(game:HttpGet("https://raw.githubusercontent.com/USER/REPO/main/dist/hub.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/tsuyukidev/ascend/master/dist/hub.lua"))()
 ```
 
 `loader.lua` is the same thing with a pcall wrapper, edit the url first.

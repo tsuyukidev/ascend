@@ -1,4 +1,4 @@
-local url = "https://raw.githubusercontent.com/USER/REPO/main/dist/hub.lua"
+local url = "https://raw.githubusercontent.com/tsuyukidev/ascend/master/dist/hub.lua"
 
 local ok, res = pcall(function()
 	return loadstring(game:HttpGet(url))()
