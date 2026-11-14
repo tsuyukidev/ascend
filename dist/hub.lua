@@ -1,4 +1,4 @@
--- ascend hub v0.3.0 | built 2026-11-14T17:27:45Z | do not edit, edit src/
+-- ascend hub v0.3.0 | built 2026-11-14T17:29:34Z | do not edit, edit src/
 local __mods = {}
 local __loaded = {}
 local function __req(name)
@@ -2240,223 +2240,26 @@ __mods["games.ofa"] = function()
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local HttpService = game:GetService("HttpService")
 
 local plr = Players.LocalPlayer
-
-local PLACES = { 17679534951, 17783527320, 18142610575, 71663447399044, 94080374434723 }
-
-local rt = { tracker = nil, gui = nil, power = nil, target = "Auto", reach = 0, base = {}, guard = false, reachConn = nil }
-
 local UpdatePing = ReplicatedStorage:WaitForChild("UpdatePing")
 
-local function pitch()
-	return workspace:FindFirstChild("Pitch")
-end
-
-local function ball()
-	local balls = workspace:FindFirstChild("Balls")
-	return balls and balls:FindFirstChild("Ball")
-end
-
-local function goal(name)
-	local p = pitch()
-	local goals = p and p:FindFirstChild("Goals")
-	local g = goals and goals:FindFirstChild(name)
-	if not g then
-		return nil
-	end
-	if g:IsA("Model") then
-		local ok, cf = pcall(function()
-			return g:GetPivot()
-		end)
-		return ok and cf.Position or nil
-	end
-	return g.Position
-end
-
-local function aimPoint()
-	local home, away = goal("Home"), goal("Away")
-	if rt.target == "Home" then
-		return home
-	end
-	if rt.target == "Away" then
-		return away
-	end
-	local b = ball()
-	if not b or not home or not away then
-		return away
-	end
-	local dhome = (b.Position - home).Magnitude
-	local daway = (b.Position - away).Magnitude
-	return dhome < daway and home or away
-end
+local rt = { reach = 0, base = {}, conn = nil, guard = false }
 
 local function char()
 	return plr.Character
 end
 
-local function ownerOf(b)
-	local o = b and b:FindFirstChild("Owner")
-	return o and o.Value or nil
-end
-
-local function facePoint(p)
-	local c = char()
-	local hrp = c and c:FindFirstChild("HumanoidRootPart")
-	if not hrp or not p then
-		return
-	end
-	local flat = (p - hrp.Position) * Vector3.new(1, 0, 1)
-	if flat.Magnitude < 0.01 then
-		return
-	end
-	hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
-end
-
-local function makeGui()
-	if rt.gui and rt.gui.Parent then
-		return rt.gui
-	end
-	local parent = (type(gethui) == "function" and gethui()) or plr:FindFirstChild("PlayerGui") or plr:WaitForChild("PlayerGui")
-	local gui = Instance.new("ScreenGui")
-	gui.Name = "AscendOFA"
-	gui.ResetOnSpawn = false
-	gui.IgnoreGuiInset = true
-	gui.DisplayOrder = 999
-	local label = Instance.new("TextLabel")
-	label.Name = "Ball"
-	label.BackgroundTransparency = 0.35
-	label.BackgroundColor3 = Color3.fromRGB(14, 14, 20)
-	label.BorderSizePixel = 0
-	label.AnchorPoint = Vector2.new(0, 1)
-	label.Position = UDim2.new(0, 16, 1, -24)
-	label.Size = UDim2.fromOffset(300, 26)
-	label.Font = Enum.Font.GothamMedium
-	label.TextSize = 13
-	label.TextColor3 = Color3.fromRGB(220, 220, 235)
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.Text = "ball: waiting"
-	label.Parent = gui
-	gui.Parent = parent
-	rt.gui = gui
-	return gui
-end
-
-local function updateTracker()
-	local gui = makeGui()
-	local label = gui:FindFirstChild("Ball")
-	local b = ball()
-	if not label then
-		return
-	end
-	if not b then
-		label.Text = "ball: not spawned"
-		return
-	end
-	local c = char()
-	local hrp = c and c:FindFirstChild("HumanoidRootPart")
-	local owner = ownerOf(b)
-	local dist = hrp and ("%.0f"):format((b.Position - hrp.Position).Magnitude) or "?"
-	local target = aimPoint()
-	local gdist = target and ("%.0f"):format((target - b.Position).Magnitude) or "?"
-	label.Text = ("ball %s | owner %s | %s studs | goal %s"):format(
-		("%.0f, %.0f, %.0f"):format(b.Position.X, b.Position.Y, b.Position.Z),
-		owner and owner.Name or "none",
-		dist,
-		gdist
-	)
-end
-
-local function setTracker(state)
-	if rt.tracker then
-		rt.tracker:Disconnect()
-		rt.tracker = nil
-	end
-	if state then
-		makeGui()
-		rt.tracker = RunService.Heartbeat:Connect(updateTracker)
-		updateTracker()
-	elseif rt.gui then
-		rt.gui:Destroy()
-		rt.gui = nil
-	end
-end
-
-local function setPower(state)
-	if rt.power then
-		rt.power:Disconnect()
-		rt.power = nil
-	end
-	if not state then
-		return
-	end
-	rt.power = RunService.Heartbeat:Connect(function()
-		local gui = plr:FindFirstChild("PlayerGui")
-		local pb = gui and gui:FindFirstChild("Powerbar")
-		local bar = pb and pb:FindFirstChild("Bar")
-		local lb = bar and bar:FindFirstChild("LoadingBar")
-		if lb and lb.Size.X.Scale ~= 0 then
-			lb.Size = UDim2.new(0, 0, lb.Size.Y.Scale, lb.Size.Y.Offset)
-		end
-	end)
-end
-
-local function applyReach()
-	local c = char()
-	if not c then
-		return
-	end
-	local r = rt.reach or 0
-	for _, name in ipairs({ "RL", "LL" }) do
-		local p = c:FindFirstChild(name)
-		if p and p:IsA("BasePart") then
-			local base = rt.base[p]
-			if not base then
-				base = p.Size
-				rt.base[p] = base
-			end
-			local want = Vector3.new(base.X, base.Y, base.Z + r * 2)
-			if p.Size ~= want then
-				p.Size = want
-			end
-		end
-	end
-end
-
-local function setReach(r)
-	rt.reach = r or 0
-	if rt.reachConn then
-		rt.reachConn:Disconnect()
-		rt.reachConn = nil
-	end
-	if r and r > 0 then
-		applyReach()
-		rt.reachConn = RunService.Heartbeat:Connect(function()
-			applyReach()
-		end)
-	else
-		local c = char()
-		if c then
-			for part, base in pairs(rt.base) do
-				if part.Parent then
-					part.Size = base
-				end
-			end
-		end
-	end
-end
-
 local function blockReports()
 	if rt.guard then
-		return true
+		return
 	end
 	if type(hookmetamethod) ~= "function" or type(getrawmetatable) ~= "function" then
-		return false, "no metamethod hooks"
+		return
 	end
 	local mt = getrawmetatable(game)
 	if not mt or type(mt.__namecall) ~= "function" then
-		return false, "no namecall"
+		return
 	end
 	local old = mt.__namecall
 	local wrap = type(newcclosure) == "function" and newcclosure or function(f)
@@ -2480,268 +2283,82 @@ local function blockReports()
 		pcall(setreadonly, mt, true)
 	end
 	rt.guard = true
-	return true
 end
 
-local traj = { parts = {}, folder = nil, conn = nil }
-local TRAJ_POINTS = 34
-
-local function trajFolder()
-	if traj.folder and traj.folder.Parent then
-		return traj.folder
-	end
-	local f = Instance.new("Folder")
-	f.Name = "AscendTrajectory"
-	f.Parent = workspace
-	traj.folder = f
-	return f
-end
-
-local function trajPart(i)
-	local p = traj.parts[i]
-	if p and p.Parent then
-		return p
-	end
-	p = Instance.new("Part")
-	p.Name = "Trajectory"
-	p.Shape = Enum.PartType.Ball
-	p.Size = Vector3.new(0.32, 0.32, 0.32)
-	p.Material = Enum.Material.Neon
-	p.Color = Color3.fromRGB(126, 108, 255)
-	p.Transparency = 1
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	p.CastShadow = false
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	p.Parent = trajFolder()
-	traj.parts[i] = p
-	return p
-end
-
-local function hideTraj(from)
-	for i = from or 1, TRAJ_POINTS do
-		local p = traj.parts[i]
-		if p then
-			p.Transparency = 1
-		end
-	end
-end
-
-local function updateTraj()
-	local b = ball()
-	local target = aimPoint()
+local function applyReach()
 	local c = char()
-	local hrp = c and c:FindFirstChild("HumanoidRootPart")
-	local shown = 0
-	if b and target and hrp and (b.Position - hrp.Position).Magnitude < 80 then
-		local flat = (target - b.Position) * Vector3.new(1, 0, 1)
-		if flat.Magnitude > 1 then
-			local speed = rt.speed or 110
-			local lift = rt.lift or 18
-			local v = flat.Unit * speed + Vector3.new(0, lift, 0)
-			local g = Vector3.new(0, -workspace.Gravity, 0)
-			local origin = b.Position
-			local dt = 0.055
-			local floor = origin.Y - 14
-			for i = 1, TRAJ_POINTS do
-				local t = i * dt
-				local p = origin + v * t + 0.5 * g * t * t
-				if p.Y < floor then
-					break
-				end
-				local part = trajPart(i)
-				part.Position = p
-				part.Transparency = 0.15 + (i / TRAJ_POINTS) * 0.65
-				shown = i
+	if not c then
+		return
+	end
+	local r = rt.reach
+	for _, name in ipairs({ "RL", "LL" }) do
+		local p = c:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			local base = rt.base[p]
+			if not base then
+				base = p.Size
+				rt.base[p] = base
+			end
+			local want = Vector3.new(base.X, base.Y, base.Z + r * 2)
+			if p.Size ~= want then
+				p.Size = want
 			end
 		end
 	end
-	hideTraj(shown + 1)
 end
 
-local function setTraj(state)
-	if traj.conn then
-		traj.conn:Disconnect()
-		traj.conn = nil
+local function setReach(value)
+	rt.reach = value or 0
+	if rt.conn then
+		rt.conn:Disconnect()
+		rt.conn = nil
 	end
-	if not state then
-		hideTraj(1)
-		return
-	end
-	traj.conn = RunService.Heartbeat:Connect(updateTraj)
-	updateTraj()
-end
-
-local function shoot(speed, lift)
-	local b = ball()
-	local c = char()
-	local hrp = c and c:FindFirstChild("HumanoidRootPart")
-	local target = aimPoint()
-	if not b or not hrp or not target then
-		return false, "no ball"
-	end
-	if (b.Position - hrp.Position).Magnitude > 30 then
-		return false, "ball too far"
-	end
-	local flat = (target - b.Position) * Vector3.new(1, 0, 1)
-	if flat.Magnitude < 1 then
-		return false, "no direction"
-	end
-	local bv = Instance.new("BodyVelocity")
-	bv.Velocity = flat.Unit * speed + Vector3.new(0, lift, 0)
-	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	bv.Parent = b
-	ReplicatedStorage.ChangeOwner:FireServer(
-		b,
-		b:GetAttribute("ReactSession"),
-		b.Position,
-		b.Velocity.Magnitude,
-		bv.Velocity.Magnitude,
-		0.4,
-		false,
-		"Shoot",
-		999
-	)
-	task.delay(0.45, function()
-		if bv and bv.Parent then
-			bv:Destroy()
+	if rt.reach > 0 then
+		blockReports()
+		applyReach()
+		rt.conn = RunService.Heartbeat:Connect(applyReach)
+	else
+		for part, base in pairs(rt.base) do
+			if part.Parent then
+				part.Size = base
+			end
 		end
-	end)
-	return true
+		rt.base = {}
+	end
 end
 
 local mod = {
 	name = "OFA Football",
 	icon = "",
-	placeIds = PLACES,
+	placeIds = { 17679534951, 17783527320, 18142610575, 71663447399044, 94080374434723 },
 	match = { "[ofa]", "ofa", "match pitch", "official football association" },
 	features = {},
 }
 
 mod.features = {
 	{
-		name = "Ball tracker",
-		type = "toggle",
-		section = "Ball",
-		run = function(state)
-			setTracker(state)
-		end,
-	},
-	{
-		name = "Target goal",
-		type = "dropdown",
-		section = "Ball",
-		options = { "Auto", "Home", "Away" },
-		default = "Auto",
-		run = function(value)
-			rt.target = value
-		end,
-	},
-	{
-		name = "Face goal",
-		section = "Ball",
-		run = function()
-			local p = aimPoint()
-			if p then
-				facePoint(p)
-			end
-		end,
-	},
-	{
 		name = "Reach",
 		type = "slider",
 		section = "Reach",
 		min = 0,
-		max = 12,
+		max = 14,
 		default = 0,
 		step = 0.5,
 		run = function(value)
 			setReach(value)
 		end,
 	},
-	{
-		name = "Block limb reports",
-		type = "toggle",
-		section = "Reach",
-		default = true,
-		run = function(state)
-			if state then
-				local ok, err = blockReports()
-				if not ok then
-					print("[Ascend ofa] guard: " .. tostring(err))
-				end
-			end
-		end,
-	},
-	{
-		name = "Max power",
-		type = "toggle",
-		section = "Shot",
-		run = function(state)
-			setPower(state)
-		end,
-	},
-	{
-		name = "Shot speed",
-		type = "slider",
-		section = "Shot",
-		min = 45,
-		max = 240,
-		default = 110,
-		run = function(value)
-			rt.speed = value
-		end,
-	},
-	{
-		name = "Shot lift",
-		type = "slider",
-		section = "Shot",
-		min = 0,
-		max = 60,
-		default = 18,
-		run = function(value)
-			rt.lift = value
-		end,
-	},
-	{
-		name = "Trajectory",
-		type = "toggle",
-		section = "Shot",
-		default = false,
-		run = function(state)
-			setTraj(state)
-		end,
-	},
-	{
-		name = "Force shot",
-		section = "Shot",
-		run = function()
-			local ok, err = shoot(rt.speed or 110, rt.lift or 18)
-			if not ok then
-				print("[Ascend ofa] force shot: " .. tostring(err))
-			end
-		end,
-	},
 }
 
 function mod.autoRun()
-	rt.speed = rt.speed or 110
-	rt.lift = rt.lift or 18
 	plr.CharacterAdded:Connect(function()
 		task.wait(0.5)
 		rt.base = {}
-		if (rt.reach or 0) > 0 then
+		if rt.reach > 0 then
 			applyReach()
 		end
 	end)
-	print("[Ascend ofa] " .. game.Name .. " (" .. game.PlaceId .. ")")
 end
-
-mod.shoot = shoot
-mod.aimPoint = aimPoint
 
 return mod
 
