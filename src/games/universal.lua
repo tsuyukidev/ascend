@@ -158,7 +158,11 @@ mod.features = {
 				error("no open server found")
 			end)
 			if not ok then
-				require("lib.ui").notify("Server Hop", tostring(err), 3)
+				require("vendor.orion"):MakeNotification({
+					Name = "Server Hop",
+					Content = tostring(err),
+					Time = 3,
+				})
 			end
 		end,
 	},

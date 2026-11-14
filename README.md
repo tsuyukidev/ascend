@@ -1,24 +1,35 @@
 # Ascend
 
-Executor script hub. Modular source, bundled into one loadstring-able file.
+Executor script hub built on Orion. Modular source, bundled into one loadstring-able file.
 
 ```
 src/
-  lib/ui.lua        custom window lib (tabs, toggles, sliders, dropdowns, textboxes, toasts)
+  vendor/orion.lua  Orion UI library, vendored and audited
   lib/store.lua     config persistence via writefile/readfile
   core/hub.lua      registry, feature binding, Hub tab (runner, config, unload)
   games/*.lua       per-game modules, auto-picked by the bundler
   main.lua          entry
 dist/hub.lua        build output, this is what you host
 loader.lua          one-line bootstrap to paste in an executor
-test/               mock Roblox env + smoke probe
+test/run.sh         build + compile + orion api + telemetry check
 ```
+
+## Orion note
+
+`shlexware/Orion` is deleted. The surviving mirror (`jensonhirst/Orion`) ships two things
+the upstream lib did not: a `loadstring` of
+`raw.githubusercontent.com/SiriusSoftwareLtd/Rayfield/.../reporter.lua` with a baked analytics
+token, and a "UI Library Upgrade" ad notification on every window. Both are stripped in
+`src/vendor/orion.lua`, and the gui parenting is hardened (`gethui` optional, `syn` optional,
+fallback to PlayerGui). Vendoring also means no runtime fetch of a lib someone else controls.
+
+Only remaining remote call is the Feather icon list JSON (data, pcall guarded, no code exec).
 
 ## Build
 
 ```sh
-python3 build.py     # writes dist/hub.lua
-sh test/run.sh       # syntax + runtime smoke under a mocked engine
+sh test/run.sh       # builds dist/hub.lua, compiles it, checks api + telemetry strip
+python3 build.py     # build only
 ```
 
 ## Load
@@ -36,7 +47,7 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/USER/REPO/main/dist/h
 Create `src/games/<name>.lua`, rebuild, done. Bundler globs the folder.
 
 ```lua
-local mod = { name = "Blox Fruits", features = {} }
+local mod = { name = "Blox Fruits", icon = "", features = {} }
 
 mod.features = {
     { name = "Auto Farm", type = "toggle", section = "Farm", run = function(state) end },
@@ -48,7 +59,7 @@ mod.features = {
 }
 
 function mod.init(tab) end       -- optional, runs before features
-function mod.build(tab) end      -- optional, custom UI
+function mod.build(tab) end      -- optional, custom ui via orion api
 function mod.cleanup() end       -- optional, runs on unload
 
 return mod
@@ -61,12 +72,14 @@ Feature keys:
 | `name` | row label, also the config key (`Module.name`) |
 | `type` | `button` (default), `toggle`, `slider`, `dropdown`, `textbox` |
 | `section` | group header, defaults to `General` |
-| `min` / `max` / `default` | slider bounds and initial value |
+| `min` / `max` / `default` / `step` / `unit` | slider bounds, initial value, increment, suffix |
 | `options` | dropdown entries |
+| `color` | per element accent, defaults to the hub purple |
 | `run` | callback; receives state/value/text |
-| `placeholder` | textbox hint |
+| `icon` | module tab icon, feather icon name, empty for none |
 
-Toggles and sliders persist to `ascend/config.json` and re-apply on load.
+Toggles, sliders, dropdowns and textboxes persist to `ascend/config.json` and re-apply on load.
+Orion fires each callback once during construction, so saved values take effect immediately.
 
 ## Instance
 
@@ -75,3 +88,5 @@ Toggles and sliders persist to `ascend/config.json` and re-apply on load.
 ```lua
 getgenv().Ascend:unload()
 ```
+
+Reinjecting also kills the previous instance and destroys the old gui.
