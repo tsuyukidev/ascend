@@ -1,4 +1,4 @@
--- ascend hub v0.3.0 | built 2026-11-14T17:15:32Z | do not edit, edit src/
+-- ascend hub v0.3.0 | built 2026-11-14T17:18:48Z | do not edit, edit src/
 local __mods = {}
 local __loaded = {}
 local function __req(name)
@@ -15,6 +15,8 @@ local function __req(name)
 	return built
 end
 local require = __req
+
+local __games = { "games.football", "games.ofa", "games.scanner", "games.universal" }
 
 __mods["vendor.orion"] = function()
 -- Orion UI Library, vendored and audited
@@ -2004,7 +2006,13 @@ function hub:start(opts)
 		CloseCallback = function() end,
 	})
 
-	local inst = { window = win, version = self.version }
+	local inst = { window = win, version = self.version, modules = self.modules }
+
+	for _, mod in ipairs(self.modules or {}) do
+		if mod.name then
+			inst[mod.name] = mod
+		end
+	end
 
 	function inst:unload()
 		for _, mod in ipairs(hub.modules) do
@@ -2884,7 +2892,9 @@ end
 __mods["main"] = function()
 local hub = require("core.hub")
 
-hub:add(require("games.universal"))
+for _, name in ipairs(__games or { "games.universal" }) do
+	hub:add(require(name))
+end
 
 return hub:start()
 

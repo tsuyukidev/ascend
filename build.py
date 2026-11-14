@@ -32,7 +32,7 @@ def modules():
     games = sorted(p.stem for p in (SRC / "games").glob("*.lua"))
     names += [f"games.{g}" for g in games]
     names.append("main")
-    return names
+    return names, [f"games.{g}" for g in games]
 
 
 def version():
@@ -42,8 +42,9 @@ def version():
 
 
 def main():
+    names, games = modules()
     parts = []
-    for name in modules():
+    for name in names:
         path = SRC / (name.replace(".", "/") + ".lua")
         if not path.exists():
             sys.exit(f"missing module: {path}")
@@ -51,7 +52,8 @@ def main():
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     head = f"-- ascend hub v{version()} | built {stamp} | do not edit, edit src/\n"
-    body = [head, PRELUDE]
+    listed = ", ".join(f'"{g}"' for g in games)
+    body = [head, PRELUDE, f"\nlocal __games = {{ {listed} }}\n"]
 
     for name, src in parts:
         body.append(f'\n__mods["{name}"] = function()\n')

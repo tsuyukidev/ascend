@@ -136,7 +136,13 @@ function hub:start(opts)
 		CloseCallback = function() end,
 	})
 
-	local inst = { window = win, version = self.version }
+	local inst = { window = win, version = self.version, modules = self.modules }
+
+	for _, mod in ipairs(self.modules or {}) do
+		if mod.name then
+			inst[mod.name] = mod
+		end
+	end
 
 	function inst:unload()
 		for _, mod in ipairs(hub.modules) do
