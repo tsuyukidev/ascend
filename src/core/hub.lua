@@ -3,7 +3,7 @@ local store = require("lib.store")
 
 local hub = {
 	name = "Ascend",
-	version = "0.2.0",
+	version = "0.2.1",
 	modules = {},
 	accent = Color3.fromRGB(126, 108, 255),
 }

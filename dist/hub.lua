@@ -1,4 +1,4 @@
--- ascend hub v0.2.0 | built 2026-11-14T13:04:33Z | do not edit, edit src/
+-- ascend hub v0.2.1 | built 2026-11-14T13:59:24Z | do not edit, edit src/
 local __mods = {}
 local __loaded = {}
 local function __req(name)
@@ -20,6 +20,9 @@ __mods["vendor.orion"] = function()
 -- Orion UI Library, vendored and audited
 -- upstream: jensonhirst/Orion (mirror of shlexware/Orion)
 -- removed: Sirius/Rayfield remote reporter loadstring, promo notification
+-- fixed: IsRunning no longer compares parent identity (broke on executors without gethui),
+--        AddSection uses AutomaticSize instead of a resize connection that silently no-ops
+--        when AddConnection is gated, which left section frames 26px tall and overlapping
 
 
 local UserInputService = game:GetService("UserInputService")
@@ -92,12 +95,7 @@ else
 end
 
 function OrionLib:IsRunning()
-	if gethui then
-		return Orion.Parent == gethui()
-	else
-		return Orion.Parent == game:GetService("CoreGui")
-	end
-
+	return Orion.Parent ~= nil
 end
 
 local function AddConnection(Signal, Function)
@@ -815,6 +813,7 @@ function OrionLib:MakeWindow(WindowConfig)
 			Container.Visible = true   
 		end)
 
+		local SectionCount = 0
 		local function GetElements(ItemParent)
 			local ElementFunction = {}
 			function ElementFunction:AddLabel(Text)
@@ -1656,33 +1655,39 @@ function OrionLib:MakeWindow(WindowConfig)
 
 		function ElementFunction:AddSection(SectionConfig)
 			SectionConfig.Name = SectionConfig.Name or "Section"
+			SectionCount += 1
 
-			local SectionFrame = SetChildren(SetProps(MakeElement("TFrame"), {
-				Size = UDim2.new(1, 0, 0, 26),
-				Parent = Container
-			}), {
-				AddThemeObject(SetProps(MakeElement("Label", SectionConfig.Name, 14), {
-					Size = UDim2.new(1, -12, 0, 16),
-					Position = UDim2.new(0, 0, 0, 3),
-					Font = Enum.Font.GothamSemibold
-				}), "TextDark"),
-				SetChildren(SetProps(MakeElement("TFrame"), {
-					AnchorPoint = Vector2.new(0, 0),
-					Size = UDim2.new(1, 0, 1, -24),
-					Position = UDim2.new(0, 0, 0, 23),
-					Name = "Holder"
-				}), {
-					MakeElement("List", 0, 6)
-				}),
+			local SectionLabel = AddThemeObject(SetProps(MakeElement("Label", SectionConfig.Name, 14), {
+				Size = UDim2.new(1, 0, 0, 18),
+				Font = Enum.Font.GothamSemibold,
+				LayoutOrder = 0,
+				Name = "Title"
+			}), "TextDark")
+
+			local Holder = SetProps(MakeElement("TFrame"), {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				LayoutOrder = 1,
+				Name = "Holder"
+			})
+			SetChildren(Holder, {
+				MakeElement("List", 0, 6)
 			})
 
-			AddConnection(SectionFrame.Holder.UIListLayout:GetPropertyChangedSignal("AbsoluteContentSize"), function()
-				SectionFrame.Size = UDim2.new(1, 0, 0, SectionFrame.Holder.UIListLayout.AbsoluteContentSize.Y + 31)
-				SectionFrame.Holder.Size = UDim2.new(1, 0, 0, SectionFrame.Holder.UIListLayout.AbsoluteContentSize.Y)
-			end)
+			SetChildren(SetProps(MakeElement("TFrame"), {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				LayoutOrder = SectionCount,
+				Parent = Container,
+				Name = "Section"
+			}), {
+				MakeElement("List", 0, 6),
+				SectionLabel,
+				Holder
+			})
 
 			local SectionFunction = {}
-			for i, v in next, GetElements(SectionFrame.Holder) do
+			for i, v in next, GetElements(Holder) do
 				SectionFunction[i] = v 
 			end
 			return SectionFunction
@@ -1820,7 +1825,7 @@ local store = require("lib.store")
 
 local hub = {
 	name = "Ascend",
-	version = "0.2.0",
+	version = "0.2.1",
 	modules = {},
 	accent = Color3.fromRGB(126, 108, 255),
 }
