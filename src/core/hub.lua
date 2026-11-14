@@ -1,9 +1,10 @@
 local OrionLib = require("vendor.orion")
 local store = require("lib.store")
+local detect = require("core.detect")
 
 local hub = {
 	name = "Ascend",
-	version = "0.2.1",
+	version = "0.3.0",
 	modules = {},
 	accent = Color3.fromRGB(126, 108, 255),
 }
@@ -151,7 +152,13 @@ function hub:start(opts)
 		end
 	end
 
-	for _, mod in ipairs(self.modules) do
+	local ordered, best = detect.order(self.modules)
+	if best then
+		local name = game.Name or "unknown"
+		notify("Detected: " .. name, ("place %d, loading %s"):format(game.PlaceId, best.mod.name), 4)
+	end
+
+	for _, mod in ipairs(ordered) do
 		local tab = win:MakeTab({
 			Name = mod.name,
 			Icon = mod.icon or "",
@@ -175,6 +182,12 @@ function hub:start(opts)
 		end
 		for _, feature in ipairs(features) do
 			bind(mod, feature, targetFor(feature.section or "General"))
+		end
+		if best and best.mod == mod and mod.autoRun then
+			local ok, err = pcall(mod.autoRun)
+			if not ok then
+				notify("AutoRun error", mod.name .. ": " .. tostring(err), 5)
+			end
 		end
 		if mod.build then
 			local ok, err = pcall(mod.build, tab)
@@ -252,7 +265,7 @@ function hub:start(opts)
 	local about = htab:AddSection({ Name = "About" })
 	about:AddParagraph(
 		self.name .. " v" .. self.version,
-		#self.modules .. " modules loaded. getgenv().Ascend:unload() works too."
+		#self.modules .. " modules loaded, " .. tostring(game.Name) .. " (" .. game.PlaceId .. ")"
 	)
 
 	ev.Ascend = inst

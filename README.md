@@ -65,6 +65,29 @@ function mod.cleanup() end       -- optional, runs on unload
 return mod
 ```
 
+## Game detection
+
+The hub scores every module against the running game and puts the best match first
+(its tab is opened on load, and `autoRun` fires).
+
+```lua
+local mod = {
+    name = "OFA Football",
+    placeIds = { 17783527320 },                       -- +10 per exact PlaceId hit
+    match = { "[ofa]", "match pitch" },               -- +3 per name keyword hit
+    features = {},
+}
+
+function mod.autoRun() end                            -- optional, runs when the game matches
+```
+
+PlaceId wins ties, then name keywords, then source order. A module scoring 0 still gets a tab,
+it just does not get focus.
+
+`src/games/scanner.lua` ships recon buttons for unknown games: dump remotes, dump a tree,
+dump players, dump where you are. Output lands in `ascend/scan_<placeid>_<kind>.json`
+inside the executor workspace.
+
 Feature keys:
 
 | key | meaning |

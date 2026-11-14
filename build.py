@@ -28,7 +28,7 @@ local require = __req
 
 
 def modules():
-    names = ["vendor.orion", "lib.store", "core.hub"]
+    names = ["vendor.orion", "lib.store", "core.detect", "core.hub"]
     games = sorted(p.stem for p in (SRC / "games").glob("*.lua"))
     names += [f"games.{g}" for g in games]
     names.append("main")

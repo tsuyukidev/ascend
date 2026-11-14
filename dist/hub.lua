@@ -1,4 +1,4 @@
--- ascend hub v0.2.1 | built 2026-11-14T13:59:24Z | do not edit, edit src/
+-- ascend hub v0.3.0 | built 2026-11-14T17:15:32Z | do not edit, edit src/
 local __mods = {}
 local __loaded = {}
 local function __req(name)
@@ -1819,13 +1819,60 @@ return store
 
 end
 
+__mods["core.detect"] = function()
+local detect = {}
+
+function detect.score(mod, placeId, gameName)
+	local score = 0
+	for _, id in ipairs(mod.placeIds or {}) do
+		if tonumber(id) == placeId then
+			score += 10
+		end
+	end
+	local lower = string.lower(gameName)
+	for _, keyword in ipairs(mod.match or {}) do
+		if string.find(lower, string.lower(keyword), 1, true) then
+			score += 3
+		end
+	end
+	return score
+end
+
+function detect.order(modules)
+	local placeId = game.PlaceId
+	local gameName = game.Name or ""
+	local ranked = {}
+	for index, mod in ipairs(modules) do
+		table.insert(ranked, { mod = mod, index = index, score = detect.score(mod, placeId, gameName) })
+	end
+	table.sort(ranked, function(a, b)
+		if a.score == b.score then
+			return a.index < b.index
+		end
+		return a.score > b.score
+	end)
+	local ordered, best = {}, nil
+	for _, entry in ipairs(ranked) do
+		table.insert(ordered, entry.mod)
+		if not best and entry.score > 0 then
+			best = entry
+		end
+	end
+	return ordered, best
+end
+
+return detect
+
+end
+
 __mods["core.hub"] = function()
 local OrionLib = require("vendor.orion")
 local store = require("lib.store")
+local detect = require("core.detect")
 
 local hub = {
 	name = "Ascend",
-	version = "0.2.1",
+	version = "0.3.0",
 	modules = {},
 	accent = Color3.fromRGB(126, 108, 255),
 }
@@ -1973,7 +2020,13 @@ function hub:start(opts)
 		end
 	end
 
-	for _, mod in ipairs(self.modules) do
+	local ordered, best = detect.order(self.modules)
+	if best then
+		local name = game.Name or "unknown"
+		notify("Detected: " .. name, ("place %d, loading %s"):format(game.PlaceId, best.mod.name), 4)
+	end
+
+	for _, mod in ipairs(ordered) do
 		local tab = win:MakeTab({
 			Name = mod.name,
 			Icon = mod.icon or "",
@@ -1997,6 +2050,12 @@ function hub:start(opts)
 		end
 		for _, feature in ipairs(features) do
 			bind(mod, feature, targetFor(feature.section or "General"))
+		end
+		if best and best.mod == mod and mod.autoRun then
+			local ok, err = pcall(mod.autoRun)
+			if not ok then
+				notify("AutoRun error", mod.name .. ": " .. tostring(err), 5)
+			end
 		end
 		if mod.build then
 			local ok, err = pcall(mod.build, tab)
@@ -2074,7 +2133,7 @@ function hub:start(opts)
 	local about = htab:AddSection({ Name = "About" })
 	about:AddParagraph(
 		self.name .. " v" .. self.version,
-		#self.modules .. " modules loaded. getgenv().Ascend:unload() works too."
+		#self.modules .. " modules loaded, " .. tostring(game.Name) .. " (" .. game.PlaceId .. ")"
 	)
 
 	ev.Ascend = inst
@@ -2082,6 +2141,534 @@ function hub:start(opts)
 end
 
 return hub
+
+end
+
+__mods["games.football"] = function()
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local mod = {
+	name = "Football",
+	icon = "",
+	placeIds = {},
+	match = { "football", "soccer", "futbol", "striker", "goalkeeper" },
+	features = {},
+}
+
+local keywords = { "ball", "kick", "shoot", "pass", "tackle", "sprint", "dribble", "goal" }
+
+local function pathOf(inst)
+	local parts = { inst.Name }
+	local node = inst.Parent
+	while node and node ~= game do
+		table.insert(parts, 1, node.Name)
+		node = node.Parent
+	end
+	return table.concat(parts, "/")
+end
+
+local function hunt()
+	local hits = {}
+	local function walk(root, depth)
+		if depth <= 0 then
+			return
+		end
+		for _, child in ipairs(root:GetChildren()) do
+			local name = string.lower(child.Name)
+			for _, keyword in ipairs(keywords) do
+				if string.find(name, keyword, 1, true) then
+					table.insert(hits, { path = pathOf(child), class = child.ClassName })
+					break
+				end
+			end
+			pcall(walk, child, depth - 1)
+		end
+	end
+	walk(ReplicatedStorage, 6)
+	return hits
+end
+
+mod.features = {
+	{
+		name = "Hunt football remotes",
+		section = "Recon",
+		run = function()
+			local hits = hunt()
+			local payload = HttpService:JSONEncode({ game = game.Name, placeId = game.PlaceId, hits = hits })
+			print("[Ascend football] " .. payload)
+			local lib = require("vendor.orion")
+			if type(writefile) == "function" then
+				local path = ("ascend/scan_%d_football.json"):format(game.PlaceId)
+				if pcall(writefile, path, payload) then
+					lib:MakeNotification({ Name = "Recon saved", Content = path, Time = 4 })
+					return
+				end
+			end
+			lib:MakeNotification({ Name = "Recon", Content = #hits .. " remote hits, see console", Time = 4 })
+		end,
+	},
+}
+
+function mod.autoRun()
+	print("[Ascend football] detected " .. game.Name .. " (" .. game.PlaceId .. ")")
+end
+
+return mod
+
+end
+
+__mods["games.ofa"] = function()
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+
+local plr = Players.LocalPlayer
+
+local PLACES = { 17679534951, 17783527320, 18142610575, 71663447399044, 94080374434723 }
+
+local rt = { tracker = nil, gui = nil, power = nil, target = "Auto" }
+
+local function pitch()
+	return workspace:FindFirstChild("Pitch")
+end
+
+local function ball()
+	local balls = workspace:FindFirstChild("Balls")
+	return balls and balls:FindFirstChild("Ball")
+end
+
+local function goal(name)
+	local p = pitch()
+	local goals = p and p:FindFirstChild("Goals")
+	local g = goals and goals:FindFirstChild(name)
+	if not g then
+		return nil
+	end
+	if g:IsA("Model") then
+		local ok, cf = pcall(function()
+			return g:GetPivot()
+		end)
+		return ok and cf.Position or nil
+	end
+	return g.Position
+end
+
+local function aimPoint()
+	local home, away = goal("Home"), goal("Away")
+	if rt.target == "Home" then
+		return home
+	end
+	if rt.target == "Away" then
+		return away
+	end
+	local b = ball()
+	if not b or not home or not away then
+		return away
+	end
+	local dhome = (b.Position - home).Magnitude
+	local daway = (b.Position - away).Magnitude
+	return dhome < daway and home or away
+end
+
+local function char()
+	return plr.Character
+end
+
+local function ownerOf(b)
+	local o = b and b:FindFirstChild("Owner")
+	return o and o.Value or nil
+end
+
+local function facePoint(p)
+	local c = char()
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	if not hrp or not p then
+		return
+	end
+	local flat = (p - hrp.Position) * Vector3.new(1, 0, 1)
+	if flat.Magnitude < 0.01 then
+		return
+	end
+	hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+end
+
+local function makeGui()
+	if rt.gui and rt.gui.Parent then
+		return rt.gui
+	end
+	local parent = (type(gethui) == "function" and gethui()) or plr:FindFirstChild("PlayerGui") or plr:WaitForChild("PlayerGui")
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "AscendOFA"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 999
+	local label = Instance.new("TextLabel")
+	label.Name = "Ball"
+	label.BackgroundTransparency = 0.35
+	label.BackgroundColor3 = Color3.fromRGB(14, 14, 20)
+	label.BorderSizePixel = 0
+	label.AnchorPoint = Vector2.new(0, 1)
+	label.Position = UDim2.new(0, 16, 1, -24)
+	label.Size = UDim2.fromOffset(300, 26)
+	label.Font = Enum.Font.GothamMedium
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(220, 220, 235)
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = "ball: waiting"
+	label.Parent = gui
+	gui.Parent = parent
+	rt.gui = gui
+	return gui
+end
+
+local function updateTracker()
+	local gui = makeGui()
+	local label = gui:FindFirstChild("Ball")
+	local b = ball()
+	if not label then
+		return
+	end
+	if not b then
+		label.Text = "ball: not spawned"
+		return
+	end
+	local c = char()
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	local owner = ownerOf(b)
+	local dist = hrp and ("%.0f"):format((b.Position - hrp.Position).Magnitude) or "?"
+	local target = aimPoint()
+	local gdist = target and ("%.0f"):format((target - b.Position).Magnitude) or "?"
+	label.Text = ("ball %s | owner %s | %s studs | goal %s"):format(
+		("%.0f, %.0f, %.0f"):format(b.Position.X, b.Position.Y, b.Position.Z),
+		owner and owner.Name or "none",
+		dist,
+		gdist
+	)
+end
+
+local function setTracker(state)
+	if rt.tracker then
+		rt.tracker:Disconnect()
+		rt.tracker = nil
+	end
+	if state then
+		makeGui()
+		rt.tracker = RunService.Heartbeat:Connect(updateTracker)
+		updateTracker()
+	elseif rt.gui then
+		rt.gui:Destroy()
+		rt.gui = nil
+	end
+end
+
+local function setPower(state)
+	if rt.power then
+		rt.power:Disconnect()
+		rt.power = nil
+	end
+	if not state then
+		return
+	end
+	rt.power = RunService.Heartbeat:Connect(function()
+		local gui = plr:FindFirstChild("PlayerGui")
+		local pb = gui and gui:FindFirstChild("Powerbar")
+		local bar = pb and pb:FindFirstChild("Bar")
+		local lb = bar and bar:FindFirstChild("LoadingBar")
+		if lb and lb.Size.X.Scale ~= 0 then
+			lb.Size = UDim2.new(0, 0, lb.Size.Y.Scale, lb.Size.Y.Offset)
+		end
+	end)
+end
+
+local function shoot(speed, lift)
+	local b = ball()
+	local c = char()
+	local hrp = c and c:FindFirstChild("HumanoidRootPart")
+	local target = aimPoint()
+	if not b or not hrp or not target then
+		return false, "no ball"
+	end
+	if (b.Position - hrp.Position).Magnitude > 30 then
+		return false, "ball too far"
+	end
+	local flat = (target - b.Position) * Vector3.new(1, 0, 1)
+	if flat.Magnitude < 1 then
+		return false, "no direction"
+	end
+	local bv = Instance.new("BodyVelocity")
+	bv.Velocity = flat.Unit * speed + Vector3.new(0, lift, 0)
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Parent = b
+	ReplicatedStorage.ChangeOwner:FireServer(
+		b,
+		b:GetAttribute("ReactSession"),
+		b.Position,
+		b.Velocity.Magnitude,
+		bv.Velocity.Magnitude,
+		0.4,
+		false,
+		"Shoot",
+		999
+	)
+	task.delay(0.45, function()
+		if bv and bv.Parent then
+			bv:Destroy()
+		end
+	end)
+	return true
+end
+
+local mod = {
+	name = "OFA Football",
+	icon = "",
+	placeIds = PLACES,
+	match = { "[ofa]", "ofa", "match pitch", "official football association" },
+	features = {},
+}
+
+mod.features = {
+	{
+		name = "Ball tracker",
+		type = "toggle",
+		section = "Ball",
+		run = function(state)
+			setTracker(state)
+		end,
+	},
+	{
+		name = "Target goal",
+		type = "dropdown",
+		section = "Ball",
+		options = { "Auto", "Home", "Away" },
+		default = "Auto",
+		run = function(value)
+			rt.target = value
+		end,
+	},
+	{
+		name = "Face goal",
+		section = "Ball",
+		run = function()
+			local p = aimPoint()
+			if p then
+				facePoint(p)
+			end
+		end,
+	},
+	{
+		name = "Max power",
+		type = "toggle",
+		section = "Shot",
+		run = function(state)
+			setPower(state)
+		end,
+	},
+	{
+		name = "Shot speed",
+		type = "slider",
+		section = "Shot",
+		min = 45,
+		max = 240,
+		default = 110,
+		run = function(value)
+			rt.speed = value
+		end,
+	},
+	{
+		name = "Shot lift",
+		type = "slider",
+		section = "Shot",
+		min = 0,
+		max = 60,
+		default = 18,
+		run = function(value)
+			rt.lift = value
+		end,
+	},
+	{
+		name = "Force shot",
+		section = "Shot",
+		run = function()
+			local ok, err = shoot(rt.speed or 110, rt.lift or 18)
+			if not ok then
+				print("[Ascend ofa] force shot: " .. tostring(err))
+			end
+		end,
+	},
+}
+
+function mod.autoRun()
+	rt.speed = rt.speed or 110
+	rt.lift = rt.lift or 18
+	print("[Ascend ofa] " .. game.Name .. " (" .. game.PlaceId .. ")")
+end
+
+mod.shoot = shoot
+mod.aimPoint = aimPoint
+
+return mod
+
+end
+
+__mods["games.scanner"] = function()
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local mod = {
+	name = "Scanner",
+	icon = "",
+	features = {},
+}
+
+local remoteClasses = {
+	RemoteEvent = true,
+	RemoteFunction = true,
+	UnreliableRemoteEvent = true,
+	BindableEvent = true,
+}
+
+local function pathOf(inst)
+	local parts = { inst.Name }
+	local node = inst.Parent
+	while node and node ~= game do
+		table.insert(parts, 1, node.Name)
+		node = node.Parent
+	end
+	return table.concat(parts, "/")
+end
+
+local function collectRemotes()
+	local found = {}
+	local function walk(root, depth)
+		if depth <= 0 then
+			return
+		end
+		for _, child in ipairs(root:GetChildren()) do
+			if remoteClasses[child.ClassName] then
+				table.insert(found, { path = pathOf(child), class = child.ClassName })
+			end
+			pcall(walk, child, depth - 1)
+		end
+	end
+	walk(ReplicatedStorage, 6)
+	return found
+end
+
+local function collectTree(root, depth)
+	local found = {}
+	local function walk(node, level, prefix)
+		if level > depth then
+			return
+		end
+		for _, child in ipairs(node:GetChildren()) do
+			local path = prefix .. "/" .. child.Name
+			table.insert(found, { path = path, class = child.ClassName })
+			if level < depth then
+				walk(child, level + 1, path)
+			end
+		end
+	end
+	walk(root, 1, root.Name)
+	return found
+end
+
+local function dump(payload, label)
+	local ok, encoded = pcall(function()
+		return HttpService:JSONEncode(payload)
+	end)
+	if not ok then
+		encoded = tostring(payload.error)
+	end
+	local fileName = ("ascend/scan_%d_%s.json"):format(game.PlaceId, label)
+	local wrote = false
+	if type(writefile) == "function" then
+		if type(makefolder) == "function" and type(isfolder) == "function" and not isfolder("ascend") then
+			pcall(makefolder, "ascend")
+		end
+		wrote = pcall(writefile, fileName, encoded)
+	end
+	local lib = require("vendor.orion")
+	if wrote then
+		lib:MakeNotification({ Name = "Scan saved", Content = fileName, Time = 4 })
+	else
+		lib:MakeNotification({ Name = "Scan (no file api)", Content = label .. ", see console", Time = 4 })
+	end
+	print("[Ascend scan] " .. label .. " " .. game.PlaceId .. " " .. tostring(game.Name))
+	print(encoded)
+	return fileName
+end
+
+mod.features = {
+	{
+		name = "Dump remotes",
+		section = "Scan",
+		run = function()
+			dump({
+				game = game.Name,
+				placeId = game.PlaceId,
+				remotes = collectRemotes(),
+			}, "remotes")
+		end,
+	},
+	{
+		name = "Dump trees",
+		type = "dropdown",
+		section = "Scan",
+		options = { "Workspace", "ReplicatedStorage", "Lighting", "Teams" },
+		default = "Workspace",
+		run = function(service)
+			local target = game:FindFirstChild(service)
+			if not target then
+				return
+			end
+			dump({
+				game = game.Name,
+				placeId = game.PlaceId,
+				service = service,
+				nodes = collectTree(target, 3),
+			}, string.lower(service))
+		end,
+	},
+	{
+		name = "Dump players",
+		section = "Scan",
+		run = function()
+			local roster = {}
+			for _, player in ipairs(Players:GetPlayers()) do
+				table.insert(roster, {
+					name = player.Name,
+					display = player.DisplayName,
+					userId = player.UserId,
+					character = player.Character and player.Character:FindFirstChildOfClass("Humanoid") ~= nil or false,
+				})
+			end
+			dump({ game = game.Name, placeId = game.PlaceId, players = roster }, "players")
+		end,
+	},
+	{
+		name = "Where am I",
+		section = "Scan",
+		run = function()
+			local info = {
+				game = game.Name,
+				placeId = game.PlaceId,
+				jobId = game.JobId,
+				players = #Players:GetPlayers(),
+			}
+			print("[Ascend] " .. HttpService:JSONEncode(info))
+			require("vendor.orion"):MakeNotification({
+				Name = tostring(game.Name),
+				Content = ("place %d, %d players"):format(game.PlaceId, #Players:GetPlayers()),
+				Time = 5,
+			})
+		end,
+	},
+}
+
+return mod
 
 end
 
