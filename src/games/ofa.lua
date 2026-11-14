@@ -7,7 +7,9 @@ local plr = Players.LocalPlayer
 
 local PLACES = { 17679534951, 17783527320, 18142610575, 71663447399044, 94080374434723 }
 
-local rt = { tracker = nil, gui = nil, power = nil, target = "Auto" }
+local rt = { tracker = nil, gui = nil, power = nil, target = "Auto", reach = 0, base = {}, guard = false, reachConn = nil }
+
+local UpdatePing = ReplicatedStorage:WaitForChild("UpdatePing")
 
 local function pitch()
 	return workspace:FindFirstChild("Pitch")
@@ -161,6 +163,87 @@ local function setPower(state)
 	end)
 end
 
+local function applyReach()
+	local c = char()
+	if not c then
+		return
+	end
+	local r = rt.reach or 0
+	for _, name in ipairs({ "RL", "LL" }) do
+		local p = c:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			local base = rt.base[p]
+			if not base then
+				base = p.Size
+				rt.base[p] = base
+			end
+			local want = Vector3.new(base.X, base.Y, base.Z + r * 2)
+			if p.Size ~= want then
+				p.Size = want
+			end
+		end
+	end
+end
+
+local function setReach(r)
+	rt.reach = r or 0
+	if rt.reachConn then
+		rt.reachConn:Disconnect()
+		rt.reachConn = nil
+	end
+	if r and r > 0 then
+		applyReach()
+		rt.reachConn = RunService.Heartbeat:Connect(function()
+			applyReach()
+		end)
+	else
+		local c = char()
+		if c then
+			for part, base in pairs(rt.base) do
+				if part.Parent then
+					part.Size = base
+				end
+			end
+		end
+	end
+end
+
+local function blockReports()
+	if rt.guard then
+		return true
+	end
+	if type(hookmetamethod) ~= "function" or type(getrawmetatable) ~= "function" then
+		return false, "no metamethod hooks"
+	end
+	local mt = getrawmetatable(game)
+	if not mt or type(mt.__namecall) ~= "function" then
+		return false, "no namecall"
+	end
+	local old = mt.__namecall
+	local wrap = type(newcclosure) == "function" and newcclosure or function(f)
+		return f
+	end
+	if type(setreadonly) == "function" then
+		pcall(setreadonly, mt, false)
+	end
+	mt.__namecall = wrap(function(self, ...)
+		if type(checkcaller) ~= "function" or not checkcaller() then
+			if getnamecallmethod() == "FireServer" and self == UpdatePing then
+				local a = { ... }
+				if type(a[1]) == "string" and string.find(a[1], "Exploiting", 1, true) then
+					return
+				end
+			end
+		end
+		return old(self, ...)
+	end)
+	if type(setreadonly) == "function" then
+		pcall(setreadonly, mt, true)
+	end
+	rt.guard = true
+	return true
+end
+
 local function shoot(speed, lift)
 	local b = ball()
 	local c = char()
@@ -237,6 +320,32 @@ mod.features = {
 		end,
 	},
 	{
+		name = "Reach",
+		type = "slider",
+		section = "Reach",
+		min = 0,
+		max = 12,
+		default = 0,
+		step = 0.5,
+		run = function(value)
+			setReach(value)
+		end,
+	},
+	{
+		name = "Block limb reports",
+		type = "toggle",
+		section = "Reach",
+		default = true,
+		run = function(state)
+			if state then
+				local ok, err = blockReports()
+				if not ok then
+					print("[Ascend ofa] guard: " .. tostring(err))
+				end
+			end
+		end,
+	},
+	{
 		name = "Max power",
 		type = "toggle",
 		section = "Shot",
@@ -281,6 +390,13 @@ mod.features = {
 function mod.autoRun()
 	rt.speed = rt.speed or 110
 	rt.lift = rt.lift or 18
+	plr.CharacterAdded:Connect(function()
+		task.wait(0.5)
+		rt.base = {}
+		if (rt.reach or 0) > 0 then
+			applyReach()
+		end
+	end)
 	print("[Ascend ofa] " .. game.Name .. " (" .. game.PlaceId .. ")")
 end
 

@@ -104,6 +104,8 @@ mod.features = {
 		section = "Scan",
 		options = { "Workspace", "ReplicatedStorage", "Lighting", "Teams" },
 		default = "Workspace",
+		persist = false,
+		onLoad = false,
 		run = function(service)
 			local target = game:FindFirstChild(service)
 			if not target then

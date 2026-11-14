@@ -31,7 +31,12 @@ end
 local function bind(mod, feature, target)
 	local key = mod.name .. "." .. feature.name
 	local pending
+	local persist = feature.persist ~= false
+	local started = false
 	local function remember(value)
+		if not persist then
+			return
+		end
 		store.set(key, value)
 		if pending then
 			task.cancel(pending)
@@ -39,6 +44,11 @@ local function bind(mod, feature, target)
 		pending = task.delay(0.4, store.flush)
 	end
 	local function fire(...)
+		if feature.onLoad == false and not started then
+			started = true
+			return
+		end
+		started = true
 		if not feature.run then
 			return
 		end
