@@ -1,4 +1,4 @@
--- ascend hub v0.3.0 | built 2026-11-15T05:48:05Z | do not edit, edit src/
+-- ascend hub v0.3.0 | built 2026-11-15T05:53:14Z | do not edit, edit src/
 local __mods = {}
 local __loaded = {}
 local function __req(name)
@@ -2393,6 +2393,10 @@ local rt = {
 	power = 1,
 	reach = 60,
 	volley = false,
+	green = false,
+	greenAt = 0.85,
+	greenLatch = false,
+	skipHook = false,
 	traj = false,
 	hookOld = nil,
 	hookOn = false,
@@ -2498,6 +2502,52 @@ local function shoot(b, family, power)
 	return true
 end
 
+local function meter()
+	if rt.meter and rt.meter.Parent then
+		return rt.meter
+	end
+	local pg = plr:FindFirstChild("PlayerGui")
+	if not pg then
+		return nil
+	end
+	rt.meter = pg:FindFirstChild("KickMeter", true)
+	return rt.meter
+end
+
+local function chargeNow()
+	local m = meter()
+	if not m or not m.Visible then
+		return nil
+	end
+	local tube = m:FindFirstChild("Tube")
+	local fill = (tube and tube:FindFirstChild("Fill", true)) or m:FindFirstChild("Fill", true)
+	if not fill then
+		return nil
+	end
+	return math.clamp(fill.Size.X.Scale, 0, 1)
+end
+
+local function greenTick()
+	if not rt.green then
+		return
+	end
+	local c = chargeNow()
+	if not c or c < 0.03 then
+		rt.greenLatch = false
+	end
+	if not c or c < rt.greenAt or rt.greenLatch then
+		return
+	end
+	local b = ballPart()
+	if not b then
+		return
+	end
+	rt.greenLatch = true
+	rt.skipHook = true
+	shoot(b, pickFamily(ballHeight(b)), c)
+	rt.skipHook = false
+end
+
 local function hook()
 	if rt.hookOn then
 		return true
@@ -2510,7 +2560,9 @@ local function hook()
 	local ok = pcall(function()
 		local fn = function(self, plan, ...)
 			if getnamecallmethod() == "FireServer" and self == remote and typeof(plan) == "table" then
-				plan.power = rt.power
+				if not rt.skipHook then
+					plan.power = rt.power
+				end
 				if rt.volley then
 					local b = ballPart()
 					if b then
@@ -2703,6 +2755,27 @@ mod.features = {
 		end,
 	},
 	{
+		name = "Auto green",
+		type = "toggle",
+		section = "Kick",
+		default = false,
+		run = function(state)
+			rt.green = state
+		end,
+	},
+	{
+		name = "Green at",
+		type = "slider",
+		section = "Kick",
+		min = 50,
+		max = 100,
+		default = 85,
+		unit = "%",
+		run = function(value)
+			rt.greenAt = value / 100
+		end,
+	},
+	{
 		name = "Trajectory",
 		type = "toggle",
 		section = "Visual",
@@ -2758,6 +2831,7 @@ function mod.autoRun()
 		if rt.traj then
 			trajTick()
 		end
+		greenTick()
 	end))
 	table.insert(rt.conns, UserInputService.InputBegan:Connect(onInput))
 end
@@ -2781,6 +2855,7 @@ mod.pickFamily = pickFamily
 mod.height = ballHeight
 mod.hook = hook
 mod.onInput = onInput
+mod.charge = chargeNow
 mod.rt = rt
 
 return mod
