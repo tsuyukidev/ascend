@@ -3,7 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local plr = Players.LocalPlayer
-local UpdatePing = ReplicatedStorage:WaitForChild("UpdatePing")
+local UpdatePing
 
 local rt = { reach = 0, base = {}, conn = nil, guard = false }
 
@@ -14,6 +14,13 @@ end
 local function blockReports()
 	if rt.guard then
 		return
+	end
+	if not UpdatePing then
+		local ping = ReplicatedStorage:FindFirstChild("UpdatePing")
+		if not ping then
+			return
+		end
+		UpdatePing = ping
 	end
 	if type(hookmetamethod) ~= "function" or type(getrawmetatable) ~= "function" then
 		return
